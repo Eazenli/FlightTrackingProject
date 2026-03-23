@@ -1,0 +1,36 @@
+[server]
+enableStaticServing = true
+
+[[theme.fontFaces]]
+url = "app/static/SpaceGrotesk-Light.ttf"
+family = "Space-Grotesk"
+weight = 300
+
+[[theme.fontFaces]]
+url = "app/static/SpaceGrotesk-Regular.ttf"
+family = "Space-Grotesk"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Space-Grotesk"
+url = "app/static/SpaceGrotesk-Medium.ttf"
+weight = 500
+
+[[theme.fontFaces]]
+family = "Space-Grotesk"
+url = "app/static/SpaceGrotesk-SemiBold.ttf"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Space-Grotesk"
+url = "app/static/SpaceGrotesk-Bold.ttf"
+weight = 700
+
+[theme]
+primaryColor = "#65afff"
+backgroundColor = "#fefdfb"
+secondaryBackgroundColor = "#F0F0EC"
+textColor = "#3D3A2A"
+font = "Space-Grotesk"
+baseRadius="large"
+baseFontSize = 16
