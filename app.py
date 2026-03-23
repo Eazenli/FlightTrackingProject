@@ -3,8 +3,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import polars as pl
 import pydeck as pdk
-from callOpenSkyAPI import call_tracks_api
-from transform import transform_trajectory
+from transform import clean_df_pl
 
 st.set_page_config(
     page_title='FlightTracker',
@@ -42,7 +41,9 @@ with st.sidebar:
         step=1
     )
 
-df = load_recent_snapshot(n_files).filter(
+df = load_recent_snapshot(n_files)
+
+df_cleaned = clean_df_pl(df).filter(
     (~pl.col('on_ground')) &
     (pl.col('velocity') >= 30)
 ).with_columns(
@@ -53,7 +54,7 @@ df = load_recent_snapshot(n_files).filter(
 ).rename(
     {'velocity': 'velocity_ms'}
 ).drop(
-    ['time_position', 'on_ground', 'retrived_at']
+    ['time_position', 'on_ground', 'retrieved_at']
 ).select([
     'icao24',
     'callsign',
@@ -67,9 +68,8 @@ df = load_recent_snapshot(n_files).filter(
     'time_position_dt_utc',
 ]).sort('icao24')
 
-df_pd = df.to_pandas()
+df_pd = df_cleaned.to_pandas()
 
-# Set the filters in a sidebar
 with st.sidebar:
     callsign_filter = st.sidebar.text_input('Search a callsign that contains')
 

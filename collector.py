@@ -12,7 +12,7 @@ def write_snapshot(df: pl.DataFrame) -> None:
     """
     now = datetime.now(timezone.utc)
     day_str = now.strftime('%Y-%m-%d')
-    time_str = now.strftime('%Hh%M%S')
+    time_str = now.strftime('%Hh%Mm%S')
 
     dir_path = Path('data') / f'date={day_str}'
     dir_path.mkdir(parents=True, exist_ok=True)

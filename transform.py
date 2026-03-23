@@ -5,30 +5,52 @@ from datetime import datetime, timezone
 JSON -> Polars DataFrame with time to collect the data 
 """
 
+schema = {
+    'icao24': pl.String,
+    'callsign': pl.String,
+    'origin_country': pl.String,
+    'time_position': pl.Int64,
+    'last_contact': pl.Int64,
+    'longitude': pl.Float64,
+    'latitude': pl.Float64,
+    'baro_altitude': pl.Float64,
+    'on_ground': pl.Boolean,
+    'velocity': pl.Float64,
+    'true_track': pl.Float64,
+    'vertical_rate': pl.Float64,
+    'sensors': pl.List(pl.Int64),
+    'geo_altitude': pl.Float64,
+    'squawk': pl.String,
+    'spi': pl.Boolean,
+    'position_source': pl.Int64,
+    'category': pl.Int64
+}
+
+
+def normalize_state_row(row: list) -> list:
+    """
+    'category' can be absent in the real raw data, in this case add None 
+    """
+    if len(row) == 17:
+        return row + [None]
+    if len(row) == 18:
+        return row
+    raise ValueError(
+        f"Ligne inattendue : longueur {len(row)} au lieu de 17 ou 18")
+
 
 def transform_to_pl_df(data: dict) -> pl.DataFrame:
     states = data['states']
-    schema = {
-        'icao24': pl.String,
-        'callsign': pl.String,
-        'origin_country': pl.String,
-        'time_position': pl.Int64,
-        'last_contact': pl.Int64,
-        'longitude': pl.Float64,
-        'latitude': pl.Float64,
-        'baro_altitude': pl.Float64,
-        'on_ground': pl.Boolean,
-        'velocity': pl.Float64,
-        'true_track': pl.Float64,
-        'vertical_rate': pl.Float64,
-        'sensors': pl.Int64,
-        'geo_altitude': pl.Float64,
-        'squawk': pl.String,
-        'spi': pl.Boolean,
-        'position_source': pl.Int64
-    }
-    df_states = pl.DataFrame(states, schema=schema, orient='row')
-    df_selected = df_states.select([
+    normalize_state = [normalize_state_row(row) for row in states]
+    df_states = pl.DataFrame(normalize_state, schema=schema, orient='row')
+    df_states = df_states.with_columns(
+        pl.lit(datetime.now(timezone.utc)).alias('retrieved_at')
+    )
+    return df_states
+
+
+def clean_df_pl(data: pl.DataFrame) -> pl.DataFrame:
+    data = data.select([
         'icao24',
         'callsign',
         'origin_country',
@@ -39,17 +61,13 @@ def transform_to_pl_df(data: dict) -> pl.DataFrame:
         'velocity',
         'true_track',
         'baro_altitude',
-        'geo_altitude'
-    ])
-
-    df_filtered = df_selected.filter(
+        'geo_altitude',
+        'retrieved_at'
+    ]).filter(
         pl.col('latitude').is_not_null() &
         pl.col('longitude').is_not_null()
-    ).with_columns(
-        pl.lit(datetime.now(timezone.utc)).alias('retrieved_at')
     )
-
-    return df_filtered
+    return data
 
 
 def transform_trajectory(data: dict):
