@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 import pydeck as pdk
 from callOpenSkyAPI import call_tracks_api
 from transform import transform_trajectory
-from load import load_recent_snapshot
+from storage.s3 import load_recent_snapshot
 import time
 
 st.set_page_config(
@@ -113,6 +113,9 @@ st.pydeck_chart(
         initial_view_state=view_state,
     )
 )
+
+"""time.sleep(30)
+st.rerun()"""
 
 st.divider()
 

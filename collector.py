@@ -4,22 +4,7 @@ import polars as pl
 from datetime import datetime, timezone
 from callOpenSkyAPI import TokenManager, call_states_api
 from transform import create_raw_df, transform_raw_df
-
-
-def write_snapshot(df: pl.DataFrame, sub_dir: str, prefix: str, snapshot_time: datetime) -> None:
-    """
-    organise the snapshot parquet according to the hour and the day
-    """
-
-    day_str = snapshot_time.strftime('%Y-%m-%d')
-    time_str = snapshot_time.strftime('%Hh%Mm%S')
-
-    dir_path = Path('data') / f'{sub_dir}' / f'date={day_str}'
-    dir_path.mkdir(parents=True, exist_ok=True)
-
-    output_path = dir_path/f'{prefix}_{time_str}.parquet'
-
-    df.write_parquet(output_path)
+from storage.s3 import write_snapshot
 
 
 def collect_states():

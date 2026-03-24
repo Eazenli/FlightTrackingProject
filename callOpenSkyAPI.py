@@ -71,6 +71,8 @@ def call_states_api(token_manager) -> dict:
             },
             timeout=10
         )
+    if response.status_code == 429:
+        raise RuntimeError("Rate limit OpenSky atteinte")
 
     response.raise_for_status()
     data = response.json()
