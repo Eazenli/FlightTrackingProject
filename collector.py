@@ -2,22 +2,22 @@ import time
 from pathlib import Path
 import polars as pl
 from datetime import datetime, timezone
-from transform import transform_to_pl_df
 from callOpenSkyAPI import TokenManager, call_states_api
+from transform import create_raw_df, transform_raw_df
 
 
-def write_snapshot(df: pl.DataFrame) -> None:
+def write_snapshot(df: pl.DataFrame, sub_dir: str, prefix: str, snapshot_time: datetime) -> None:
     """
     organise the snapshot parquet according to the hour and the day
     """
-    now = datetime.now(timezone.utc)
-    day_str = now.strftime('%Y-%m-%d')
-    time_str = now.strftime('%Hh%Mm%S')
 
-    dir_path = Path('data') / f'date={day_str}'
+    day_str = snapshot_time.strftime('%Y-%m-%d')
+    time_str = snapshot_time.strftime('%Hh%Mm%S')
+
+    dir_path = Path('data') / f'{sub_dir}' / f'date={day_str}'
     dir_path.mkdir(parents=True, exist_ok=True)
 
-    output_path = dir_path/f'states_{time_str}.parquet'
+    output_path = dir_path/f'{prefix}_{time_str}.parquet'
 
     df.write_parquet(output_path)
 
@@ -43,11 +43,25 @@ def collect_states():
         if calls < max_calls:
             try:
                 data_json = call_states_api(token_manager)
-                df_pl = transform_to_pl_df(data_json)
-                write_snapshot(df_pl)
+                snapshot_time = datetime.now(timezone.utc)
+                df_raw_pl = create_raw_df(data_json)
+                write_snapshot(
+                    df_raw_pl,
+                    sub_dir='raw',
+                    prefix='states',
+                    snapshot_time=snapshot_time
+                )
+                # transform the raw data and ingest into another dir
+                df_serving_pl = transform_raw_df(df_raw_pl)
+                write_snapshot(
+                    df_serving_pl,
+                    sub_dir='serving',
+                    prefix='serving',
+                    snapshot_time=snapshot_time
+                )
                 calls += 1
-                time.sleep(30)
                 print(f'Calls: {calls} / {max_calls}')
+                time.sleep(30)
             except Exception as e:
                 print(f'Collector error: {e}')
                 time.sleep(30)

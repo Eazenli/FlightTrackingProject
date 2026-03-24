@@ -78,10 +78,20 @@ def call_states_api(token_manager) -> dict:
 
 
 def call_tracks_api(icao24: str) -> dict:
-    response = requests.get(
-        url=f'https://opensky-network.org/api/tracks/all?icao24={icao24}&time=0',
-        timeout=10
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data
+    try:
+        response = requests.get(
+            url=f'https://opensky-network.org/api/tracks/all?icao24={icao24}&time=0',
+            timeout=10
+        )
+        if response.status_code == 404:
+            return None
+
+        if response.status_code == 429:
+            raise RuntimeError("Rate limit OpenSky atteinte")
+
+        response.raise_for_status()
+        data = response.json()
+        return data
+
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(f"Erreur HTTP OpenSky: {e}") from e
