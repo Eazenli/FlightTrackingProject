@@ -46,10 +46,10 @@ def collect_states():
                 )
                 calls += 1
                 print(f'Calls: {calls} / {max_calls}')
-                time.sleep(30)
+                time.sleep(29)
             except Exception as e:
                 print(f'Collector error: {e}')
-                time.sleep(30)
+                time.sleep(29)
         else:
             time.sleep(300)
 

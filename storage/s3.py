@@ -1,7 +1,7 @@
 import polars as pl
 from pathlib import Path
 import boto3
-import os
+import io
 from datetime import datetime
 
 s3 = boto3.client('s3')
@@ -18,35 +18,29 @@ def write_snapshot(df: pl.DataFrame, sub_dir: str, prefix: str, snapshot_time: d
 
     # S3 key
     s3_key = f'{sub_dir}/date={day_str}/{prefix}_{time_str}.parquet'
-    # tempo file : create a 'tmp' dir in Windows, in Linux, use the 'tmp' dir
-    if os.name == 'nt':
-        base_dir = Path('tmp')
-    else:
-        base_dir = Path('/tmp')
 
-    tmp_dir = base_dir / sub_dir / f'date={day_str}'
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    # Create a Buffer memory
+    buffer = io.BytesIO()
+    df.write_parquet(buffer)
+    buffer.seek(0)
 
-    tmp_path = tmp_dir / f'{prefix}_{time_str}.parquet'
-
-    df.write_parquet(tmp_path)
-    s3.upload_file(tmp_path, bucket_name, s3_key)
+    s3.upload_fileobj(buffer, bucket_name, s3_key)
 
     print(f'Uploaded: {s3_key}')
 
 
 def load_recent_snapshot(n_files: int, sub_dir: str) -> pl.DataFrame:
-    response = s3.list_objects_v2(
+    list_objects = s3.list_objects_v2(
         Bucket=bucket_name,
         Prefix=f'{sub_dir}/'
     )
 
-    if 'Contents' not in response:
+    if 'Contents' not in list_objects:
         return pl.DataFrame()
 
     # Retrieve all the object keys in S3 which ends with '.parquet'
     all_keys = [
-        obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.parquet')
+        obj['Key'] for obj in list_objects['Contents'] if obj['Key'].endswith('.parquet')
     ]
     if not all_keys:
         return pl.DataFrame()
@@ -61,30 +55,28 @@ def load_recent_snapshot(n_files: int, sub_dir: str) -> pl.DataFrame:
     # Get the N latest snapshots
     recent_keys = sorted(latest_day_keys)[-min(n_files, len(latest_day_keys)):]
 
-    if os.name == 'nt':
-        base_dir = Path('tmp')
-    else:
-        base_dir = Path('/tmp')
-
-    tmp_dir = base_dir / f'download_s3_{sub_dir}' / latest_day
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    local_files = []
+    dfs = []
     for key in recent_keys:
-        local_file = tmp_dir / Path(key).name
-        s3.download_file(bucket_name, key, str(local_file))
-        local_files.append(str(local_file))
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        body = response['Body'].read()
+        buffer = io.BytesIO(body)
+        dfs.append(pl.read_parquet(buffer))
 
-    return pl.read_parquet(local_files) if local_files else pl.DataFrame()
+    return pl.concat(dfs) if dfs else pl.DataFrame()
 
 
 if __name__ == '__main__':
+    from datetime import timezone
 
-    # Check the connection with S3
-    Path('tmp').mkdir(exist_ok=True)
-    path = 'tmp/test.txt'
-    with open(path, 'w') as f:
-        f.write('hello')
+    df = pl.DataFrame({
+        "icao24": ["abc123"],
+        "latitude": [48.85],
+        "longitude": [2.35],
+    })
 
-    s3.upload_file(path, bucket_name, 'test/test.txt')
-    print('Unpload ok')
+    write_snapshot(
+        df=df,
+        sub_dir="test",
+        prefix="test",
+        snapshot_time=datetime.now(timezone.utc),
+    )

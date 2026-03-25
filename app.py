@@ -8,21 +8,28 @@ from storage.s3 import load_recent_snapshot
 import time
 
 st.set_page_config(
-    page_title='FlightTracker',
+    page_title='✈️ FlightTracker',
     layout='wide'
 )
 
-st.header('Flight Tracker')
+
+st.header('✈️ Flight Tracker')
+st.markdown(
+    'All the data displayed in this app come from *OpenSky Network API*.\n\n'
+    'The app refreshes every 30 seconds to retrieve the most recent information.'
+)
+
 
 with st.sidebar:
     st.header('Filter the data')
 
     n_files = st.slider(
-        "Get the last x snapshot of airplanes' positions:",
+        'Get the last N snapshot(s) of airplane positions: ',
         min_value=1,
         max_value=20,
         value=1,
-        step=1
+        step=1,
+        help='The yellow points on the map indicate the latest known positions of aircraft, while the blue ones represent previous positions.'
     )
 
 df = load_recent_snapshot(n_files, sub_dir='serving')
@@ -31,7 +38,7 @@ df_pd = df.to_pandas()
 with st.sidebar:
 
     min_altitude = st.slider(
-        'Flights over x geo-altitude (m):',
+        'Flights over N geo-altitude (m):',
         min_value=0,
         max_value=15000,
         value=0
@@ -45,9 +52,8 @@ with st.sidebar:
 
     callsign_filter = st.sidebar.text_input('Search a callsign that contains:')
 
-    st.divider()
-    icao24 = st.sidebar.text_input(
-        'Check the live track of a flight by ICAO24:')
+# st.divider()
+# icao24 = st.sidebar.text_input('Check the live track of a flight by ICAO24:')
 
 
 # Apply the filters
@@ -70,14 +76,28 @@ df_filtered = df_filtered[
 st.subheader(f"Data for {df_filtered['icao24'].nunique()} airplanes")
 st.dataframe(df_filtered)
 
-df_last = (
+df_path = (
     df_filtered
     .sort_values(['icao24', 'time_position_dt_utc'])
+    .groupby('icao24')
+    .apply(lambda x: x[['longitude', 'latitude']].values.tolist())
+    .reset_index(name='path')
+)
+
+df_last = (
+    df_filtered
+    .sort_values(['icao24', 'origin_country', 'time_position_dt_utc'])
     .groupby('icao24')
     .tail(1)
 )
 
-placeholder = st.empty()
+path_layer = pdk.Layer(
+    'PathLayer',
+    data=df_path,
+    get_path='path',
+    get_color=[101, 175, 255, 50],
+    width_min_pixels=2,
+)
 
 scatter_history = pdk.Layer(
     'ScatterplotLayer',
@@ -86,7 +106,7 @@ scatter_history = pdk.Layer(
     get_radius=500,
     radius_min_pixels=1,
     radius_max_pixels=10,
-    get_fill_color=[101, 175, 255],
+    get_fill_color=[101, 175, 255, 50],
     pickable=True,
 )
 
@@ -94,81 +114,87 @@ scatter_last = pdk.Layer(
     'ScatterplotLayer',
     data=df_last,
     get_position='[longitude, latitude]',
-    get_radius=700,
+    get_radius=1000,
     radius_min_pixels=1,
     radius_max_pixels=10,
     get_fill_color=[251, 177, 60],
     pickable=True,
 )
 
-view_state = pdk.ViewState(
-    latitude=df_filtered['latitude'].mean(),
-    longitude=df_filtered['longitude'].mean(),
-    zoom=4,
-)
+if 'map_view_state' not in st.session_state:
+    st.session_state['map_view_state'] = pdk.ViewState(
+        latitude=df_filtered['latitude'].mean(),
+        longitude=df_filtered['longitude'].mean(),
+        zoom=4,
+        pitch=0,
+    )
 
 st.pydeck_chart(
     pdk.Deck(
-        layers=[scatter_history, scatter_last],
-        initial_view_state=view_state,
-    )
+        layers=[path_layer, scatter_history, scatter_last],
+        initial_view_state=st.session_state['map_view_state'],
+    ),
+    key='flight_map'
 )
 
-"""time.sleep(30)
-st.rerun()"""
+time.sleep(30)
+st.rerun()
 
-st.divider()
 
-if icao24:
-    track_data_json = call_tracks_api(icao24)
+# --- API to retrieve live tracks ---
 
-    if track_data_json is None:
-        placeholder.warning('No track available at the moment')
-    else:
-        df_track_point, pydeck_data = transform_trajectory(track_data_json)
+# st.divider()
 
-        st.subheader(f'Live track of aircraft with ICAO24: {icao24}')
+# if icao24:
+#     track_data_json = call_tracks_api(icao24)
 
-        path_layer = pdk.Layer(
-            'PathLayer',
-            data=pydeck_data,
-            get_path='path',
-            get_width=4,
-            get_color=[101, 175, 255],
-            width_min_pixels=2,
-            pickable=True,
-        )
+#     if track_data_json is None:
+#         placeholder.warning('No track available at the moment')
+#     else:
+#         df_track_point, pydeck_data = transform_trajectory(track_data_json)
 
-        last_point = (
-            df_track_point
-            .select(["longitude", "latitude", "callsign", "icao24"])
-            .tail(1)
-            .to_dicts()
-        )
+#         st.subheader(f'Live track of aircraft with ICAO24: {icao24}')
 
-        scatter_last = pdk.Layer(
-            'ScatterplotLayer',
-            data=last_point,
-            get_position='[longitude, latitude]',
-            get_radius=1000,
-            radius_min_pixels=2,
-            radius_max_pixels=20,
-            get_fill_color=[251, 177, 60],
-            pickable=True,
-        )
+#         path_layer = pdk.Layer(
+#             'PathLayer',
+#             data=pydeck_data,
+#             get_path='path',
+#             get_width=4,
+#             get_color=[101, 175, 255],
+#             width_min_pixels=2,
+#             pickable=True,
+#         )
 
-        view_state = pdk.ViewState(
-            latitude=df_track_point['latitude'].mean(),
-            longitude=df_track_point['longitude'].mean(),
-            zoom=5,
-            pitch=0,
-        )
+#         last_point = (
+#             df_track_point
+#             .select(['longitude', 'latitude', 'callsign', 'icao24'])
+#             .tail(1)
+#             .to_dicts()
+#         )
 
-        st.pydeck_chart(pdk.Deck(
-            layers=[path_layer, scatter_last],
-            initial_view_state=view_state
-        ))
+#         scatter_last = pdk.Layer(
+#             'ScatterplotLayer',
+#             data=last_point,
+#             get_position='[longitude, latitude]',
+#             get_radius=1000,
+#             radius_min_pixels=2,
+#             radius_max_pixels=20,
+#             get_fill_color=[251, 177, 60],
+#             pickable=True,
+#         )
 
-else:
-    st.warning(
-        'Please enter a ICAO24 code in the sidebar to the side to view the live track.')
+#         view_state = pdk.ViewState(
+#             latitude=df_track_point['latitude'].mean(),
+#             longitude=df_track_point['longitude'].mean(),
+#             zoom=5,
+#             pitch=0,
+#         )
+
+#         st.pydeck_chart(pdk.Deck(
+#             layers=[path_layer, scatter_last],
+#             initial_view_state=view_state
+#         ))
+
+# else:
+#     st.warning(
+#         'Please enter a ICAO24 code in the sidebar to the side to view the live track.')
