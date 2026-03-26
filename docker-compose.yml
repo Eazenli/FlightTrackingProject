@@ -1,0 +1,23 @@
+services:
+  collector:
+    build: .
+    container_name: flight_collector
+    command: poetry run python collector.py
+    environment:
+      STORAGE_SOLUTION: s3
+      AWS_DEFAULT_REGION: eu-west-1
+    # get the AWS credential 
+    volumes:
+      - "C:/Users/lzz31/.aws:/root/.aws:ro"
+  
+  streamlit:
+    build: .
+    container_name: streamlit_app
+    command: poetry run streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      STORAGE_SOLUTION: s3
+      AWS_DEFAULT_REGION: eu-west-1
+    volumes:
+      - "C:/Users/lzz31/.aws:/root/.aws:ro"
+    ports:
+      - "8501:8501"

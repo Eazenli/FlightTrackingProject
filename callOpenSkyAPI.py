@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 import requests
-import json
 from datetime import datetime, timedelta
 """
 Token management + API calling 

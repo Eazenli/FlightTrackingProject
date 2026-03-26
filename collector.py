@@ -1,6 +1,4 @@
 import time
-from pathlib import Path
-import polars as pl
 from datetime import datetime, timezone
 from callOpenSkyAPI import TokenManager, call_states_api
 from transform import create_raw_df, transform_raw_df

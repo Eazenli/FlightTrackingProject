@@ -1,9 +1,6 @@
 import streamlit as st
-
-from datetime import datetime, timezone, timedelta
 import pydeck as pdk
-from callOpenSkyAPI import call_tracks_api
-from transform import transform_trajectory
+import altair as alt
 from storage.s3 import load_recent_snapshot
 import time
 
@@ -12,19 +9,17 @@ st.set_page_config(
     layout='wide'
 )
 
-
 st.header('✈️ Flight Tracker')
 st.markdown(
     'All the data displayed in this app come from *OpenSky Network API*.\n\n'
     'The app refreshes every 30 seconds to retrieve the most recent information.'
 )
 
-
 with st.sidebar:
     st.header('Filter the data')
 
     n_files = st.slider(
-        'Get the last N snapshot(s) of airplane positions: ',
+        'Get the last N snapshot(s) of aircraft position: ',
         min_value=1,
         max_value=20,
         value=1,
@@ -50,13 +45,16 @@ with st.sidebar:
         country
     )
 
-    callsign_filter = st.sidebar.text_input('Search a callsign that contains:')
+    callsign_filter = st.sidebar.text_input(
+        'Search the aircraft whose callsign contains:')
 
-# st.divider()
-# icao24 = st.sidebar.text_input('Check the live track of a flight by ICAO24:')
+    st.divider()
+
+    icao24 = st.sidebar.text_input(
+        'View the altitude and speed plots of an aircraft by ICAO24:')
 
 
-# Apply the filters
+# --- Apply the filters and display the DataFrame ---
 
 df_filtered = df_pd.copy()
 
@@ -73,8 +71,10 @@ df_filtered = df_filtered[
     df_filtered['geo_altitude']
     .fillna(-1) >= min_altitude]
 
-st.subheader(f"Data for {df_filtered['icao24'].nunique()} airplanes")
+st.markdown(f"#### Data for {df_filtered['icao24'].nunique()} airplanes")
 st.dataframe(df_filtered)
+
+# --- MAP ---
 
 df_path = (
     df_filtered
@@ -137,64 +137,57 @@ st.pydeck_chart(
     key='flight_map'
 )
 
+# --- PLOT ---
+
+st.divider()
+
+
+def create_plot(df, col) -> st.altair_chart:
+    df_plot = df[['time_position_dt_utc', f'{col}']].dropna()
+
+    line_chart = alt.Chart(df_plot).mark_line(color='#65afff').encode(
+        x=alt.X('time_position_dt_utc:T', title='Time',
+                axis=alt.Axis(format='%H:%M:%S')),
+        y=alt.Y(f'{col}:Q', title=f'{col}')
+    )
+
+    point_chart = alt.Chart(df_plot).mark_circle(color='#65afff', size=60).encode(
+        x='time_position_dt_utc:T',
+        y=f'{col}:Q'
+    )
+
+    st.altair_chart(line_chart + point_chart, use_container_width=True)
+
+
+if icao24:
+    df_aircraft = df_filtered[
+        df_filtered['icao24'].str.lower() == icao24].copy()
+    df_aircraft = df_aircraft.sort_values('time_position_dt_utc').tail(n_files)
+
+    if df_aircraft.empty:
+        st.warning(f'No data found for aircraft with ICAO24 code {icao24}.')
+    else:
+        callsign = df_aircraft.loc[
+            df_aircraft['icao24'].str.lower() == icao24.lower(),
+            'callsign'
+        ].iloc[0]
+        if callsign:
+            st.sidebar.info(f'The callsign of this aircraft is: {callsign}')
+        else:
+            st.sidebar.info('The callsign of this aircraft is not available.')
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(f'##### Geo-altitude(m) of aircraft {callsign}')
+            create_plot(df_aircraft, 'geo_altitude')
+
+        with col2:
+            st.markdown(f'##### Velocity(Km/H) of aircraft {callsign}')
+            create_plot(df_aircraft, 'velocity_kmh')
+
+else:
+    st.warning('Please enter a ICAO24 code to view the plots')
+
 time.sleep(30)
 st.rerun()
-
-
-# --- API to retrieve live tracks ---
-
-# st.divider()
-
-# if icao24:
-#     track_data_json = call_tracks_api(icao24)
-
-#     if track_data_json is None:
-#         placeholder.warning('No track available at the moment')
-#     else:
-#         df_track_point, pydeck_data = transform_trajectory(track_data_json)
-
-#         st.subheader(f'Live track of aircraft with ICAO24: {icao24}')
-
-#         path_layer = pdk.Layer(
-#             'PathLayer',
-#             data=pydeck_data,
-#             get_path='path',
-#             get_width=4,
-#             get_color=[101, 175, 255],
-#             width_min_pixels=2,
-#             pickable=True,
-#         )
-
-#         last_point = (
-#             df_track_point
-#             .select(['longitude', 'latitude', 'callsign', 'icao24'])
-#             .tail(1)
-#             .to_dicts()
-#         )
-
-#         scatter_last = pdk.Layer(
-#             'ScatterplotLayer',
-#             data=last_point,
-#             get_position='[longitude, latitude]',
-#             get_radius=1000,
-#             radius_min_pixels=2,
-#             radius_max_pixels=20,
-#             get_fill_color=[251, 177, 60],
-#             pickable=True,
-#         )
-
-#         view_state = pdk.ViewState(
-#             latitude=df_track_point['latitude'].mean(),
-#             longitude=df_track_point['longitude'].mean(),
-#             zoom=5,
-#             pitch=0,
-#         )
-
-#         st.pydeck_chart(pdk.Deck(
-#             layers=[path_layer, scatter_last],
-#             initial_view_state=view_state
-#         ))
-
-# else:
-#     st.warning(
-#         'Please enter a ICAO24 code in the sidebar to the side to view the live track.')
